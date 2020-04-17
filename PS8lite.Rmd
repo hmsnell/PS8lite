@@ -29,6 +29,7 @@ library(tidyverse)
 library(janitor)
 library(skimr)
 library(randomForest)
+library(caret)
 
 # Set seed value of random number generator here:
 set.seed(76)
@@ -40,7 +41,6 @@ sample_submission <- read_csv("data/sample_submission.csv")
 ```
 
 Note above that `data/train.csv` is once again all the original training data with 1460 rows, unlike PS7 on LASSO where it only had 50 rows to  artificially create a situation where $p$ is very large relative to $n$.
-
 
 
 
@@ -91,9 +91,10 @@ training <- training %>%
 
 Questions to ask yourself or discuss with your peers
 
-1. Why didn't I apply the same change to the `test` set?
+1. Why didn't I apply the same change to the `test` set?  
+  Our `test` set will not contain the outcome variable, therefore not needing the transformation.
 1. If I transformed the outcome variable now, what will I have to make sure to do later on?
-
+It will be necessary to revert the variable back to its original form before making the Kaggle submission later on.
 
 ## Select only numerical predictors
 
@@ -187,13 +188,38 @@ MiscVal + MoSold + YrSold" %>%
 Fit one Random Forest model `model_rf` using any approach you want.
 
 ```{r}
+# Define cross-validation settings: 10-fold CV
+fit_control <- trainControl(method = "cv", number = 10)
+# Setup search grid of "tuning" parameters
+mtry <- 2:5
+tunegrid <- expand.grid(.mtry = mtry)
+```
 
+```{r, cache=TRUE}
+# Fit caret rf model
+model_rf_caret <- caret::train(
+  # Model formula
+  form = model_formula,
+  # Training data
+  data = training, 
+  # Set method to randomForests. Note: this is where you can switch out to
+  # different methods
+  method = "rf",
+  # Score/error metric used:
+  metric = "RMSE",
+  # Cross-validation settings:
+  trControl = fit_control,
+  # Search grid of tuning parameters
+  tuneGrid = tunegrid
+  )
+```
+
+```{r}
+model_rf_caret
 ```
 
 
-
 ***
-
 
 
 # Make predictions and submit to Kaggle
@@ -201,9 +227,19 @@ Fit one Random Forest model `model_rf` using any approach you want.
 Using `model_rf` make predictions and submit to Kaggle.
 
 ```{r}
-
+test <- test %>% 
+  mutate(
+    logSalePrice_hat_rf_caret = predict(model_rf_caret, test),
+    SalePrice_hat_rf_caret = exp(logSalePrice_hat_rf_caret) -1
+  )
 ```
 
+```{r}
+submission_rf_caret <- test %>%
+  mutate(SalePrice = SalePrice_hat_rf_caret) %>%
+  select(Id, SalePrice)
+write_csv(submission_rf_caret, "submission_rf_caret.csv")
+```
 
-![](images/score_screenshot_naive.png){ width=100% }
+![](images/submission_rfcaret.png){ width=100% }
 
